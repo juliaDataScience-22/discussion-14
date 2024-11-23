@@ -1,0 +1,93 @@
+---
+title: "Cancer vs. Pollution"
+author: "Julia Ferris"
+date: "2024-11-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Libraries
+
+```{r}
+library(sf)
+library(tigris)
+library(dplyr)
+library(leaflet)
+library(readr)
+library(knitr)
+```
+
+## Main Code
+
+```{r}
+options(tigris_use_cache = TRUE) 
+counties <- counties(cb = TRUE, resolution = "20m") 
+ny_counties <- counties %>% filter(STATEFP == "36")
+
+ny_counties_sf <- st_as_sf(ny_counties)
+
+
+myData <- read_csv("discussionWk14.csv")
+
+myData$GEOID <- as.character(myData$GEOID)
+
+
+myData$Pollution <- ifelse(myData$Pollution == "No Events", NA, myData$Pollution)
+myData$Pollution <- as.numeric(myData$Pollution)
+
+
+complexData <- myData %>%
+  mutate(
+    Cancer = case_when(
+      Cancer >= 0.09 ~ "High Cancer",
+      Cancer >= 0.07 & Cancer < 0.09 ~ "Medium Cancer",
+      Cancer < 0.07 ~ "Low Cancer"
+    ),
+    Pollution = case_when(
+      Pollution >= 8 ~ "High Pollution",
+      Pollution >= 4.5 & Pollution < 8 ~ "Medium Pollution",
+      Pollution < 4.5 ~ "Low Pollution"
+    ),
+    combined_category = paste(Cancer, Pollution)
+  )
+
+ny_counties <- counties(cb = TRUE, resolution = "20m") %>% filter(STATEFP == "36")
+ny_counties_sf <- st_as_sf(ny_counties) %>%
+  left_join(complexData, by = "GEOID")
+
+ny_counties_sf <- st_transform(ny_counties_sf, crs = 4326)
+
+pal <- colorFactor(
+  palette = c("red", "orange", "yellow", "green", "blue", "purple", "pink", "tan", "gray"),
+  domain = c("High Cancer High Pollution", "High Cancer Medium Pollution", "High Cancer Low Pollution", 
+             "Medium Cancer High Pollution", "Medium Cancer Medium Pollution", "Medium Cancer Low Pollution", 
+             "Low Cancer High Pollution", "Low Cancer Medium Pollution", "Low Cancer Low Pollution")
+)
+
+data_2021 <- ny_counties_sf %>% filter(Year == 2021)
+
+leaflet(data = data_2021) %>%
+  addTiles() %>%
+  addPolygons(
+    fillColor = ~pal(combined_category),  # Use combined category for color
+    color = ~ifelse(combined_category %in% c("High Cancer High Pollution", "Medium Cancer Medium Pollution", "Low Cancer Low Pollution"), "black", "gray"),  # Bold outline for selected categories
+    weight = ~ifelse(combined_category %in% c("High Cancer High Pollution", "Medium Cancer Medium Pollution", "Low Cancer Low Pollution"), 2, 1),  # Thicker line for selected categories
+    fillOpacity = ~ifelse(combined_category %in% c("High Cancer High Pollution", "Medium Cancer Medium Pollution", "Low Cancer Low Pollution"), 1, 0.5),  # Thicker line for selected categories
+    popup = ~paste0(NAME, ": Cancer Rate = ", Cancer, ", Pollution = ", Pollution)  # Popup with county details
+  ) %>%
+  addLegend(
+    position = "bottomright",
+    pal = pal,
+    values = c("High Cancer High Pollution", "High Cancer Medium Pollution", "High Cancer Low Pollution", 
+               "Medium Cancer High Pollution", "Medium Cancer Medium Pollution", "Medium Cancer Low Pollution", 
+               "Low Cancer High Pollution", "Low Cancer Medium Pollution", "Low Cancer Low Pollution"),
+    title = "Cancer & Pollution",
+    na.label = "No Data"
+  )
+
+
+```
+
